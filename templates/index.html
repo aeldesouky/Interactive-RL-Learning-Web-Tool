@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RL Training Visualizer</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .sidebar {
+            height: 100vh;
+            background-color: #ffffff;
+            padding: 20px;
+            border-right: 1px solid #dee2e6;
+            overflow-y: auto;
+        }
+        
+        .main-area {
+            height: 100vh;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .visualization-container {
+            background-color: #000;
+            border-radius: 8px;
+            padding: 10px;
+            position: relative;
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #env-frame {
+            max-width: 100%;
+            max-height: 600px;
+            border-radius: 4px;
+        }
+        
+        .stats-overlay {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+        }
+        
+        .param-slider {
+            margin-bottom: 20px;
+        }
+        
+        .param-description {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        
+        .control-panel {
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 30px;
+        }
+        
+        .form-label {
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        #status-message {
+            margin-top: 15px;
+        }
+        
+        .slider-value {
+            font-weight: bold;
+            color: #0d6efd;
+        }
+
+        .tab-wrapper {
+            margin-top: 12px;
+        }
+
+        .tab-pane-shell {
+            border: 1px solid #dee2e6;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            background-color: #ffffff;
+            padding: 20px;
+        }
+
+        .analysis-card {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 16px;
+            background-color: #ffffff;
+            height: 100%;
+        }
+
+        .placeholder-panel {
+            background: linear-gradient(135deg, #eef2f7 0%, #f9fafb 100%);
+            border: 1px dashed #cfd6e0;
+            border-radius: 8px;
+            color: #6c757d;
+            padding: 18px;
+            min-height: 140px;
+            text-align: center;
+        }
+
+        .placeholder-panel.filled {
+            display: block;
+            text-align: left;
+        }
+
+        .nav-tabs .nav-link {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .nav-tabs .nav-link.active {
+            color: #0d6efd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 sidebar">
+                <h1 class="h4">RL Visualizer</h1>
+                
+                <!-- Environment Selection -->
+                <div class="mb-4">
+                    <label for="environment-select" class="form-label d-flex align-items-center gap-2">
+                        <span>Environment</span>
+                        <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip" data-bs-placement="right"
+                           title="Choose a Gymnasium task. Discrete action spaces work best with the built-in tabular algorithms."></i>
+                    </label>
+                    <select class="form-select" id="environment-select">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+                
+                <!-- Algorithm Selection -->
+                <div class="mb-4">
+                    <label for="algorithm-select" class="form-label d-flex align-items-center gap-2">
+                        <span>Algorithm</span>
+                        <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip" data-bs-placement="right"
+                           title="Pick a learning method. MC learns from full episodes; TD/SARSA/QL update every step; Value/Policy Iteration assume known dynamics."></i>
+                    </label>
+                    <select class="form-select" id="algorithm-select">
+                        <option value="">Select algorithm...</option>
+                    </select>
+                </div>
+                
+                <!-- Algorithm Parameters -->
+                <div id="parameters-container">
+                    <h5 class="mb-3">Parameters</h5>
+                    <p class="text-muted">Select an algorithm to configure parameters</p>
+                </div>
+                
+                <!-- Training Controls -->
+                <div class="mb-4">
+                    <label for="num-episodes" class="form-label d-flex align-items-center gap-2">
+                        <span>Number of Episodes</span>
+                        <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip" data-bs-placement="right"
+                           title="How many complete runs to train. More episodes = more learning time but longer wait."></i>
+                    </label>
+                    <input type="number" class="form-control" id="num-episodes" value="10" min="1" max="1000">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="delay-input" class="form-label d-flex align-items-center gap-2">
+                        <span>Animation Delay (seconds)</span>
+                        <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip" data-bs-placement="right"
+                           title="Pause between frames. Lower = faster training and updates; raise if your GPU/CPU struggles with rendering."></i>
+                    </label>
+                    <input type="number" class="form-control" id="delay-input" value="0.05" min="0" max="1" step="0.01">
+                    <small class="form-text text-muted">Lower values = faster animation</small>
+                </div>
+                
+                <!-- Start/Stop Buttons -->
+                <div class="d-grid gap-2">
+                    <button class="btn btn-primary btn-lg" id="start-btn">
+                        <i class="bi bi-play-fill"></i> Start Training
+                    </button>
+                    <button class="btn btn-danger btn-lg" id="stop-btn" disabled>
+                        <i class="bi bi-stop-fill"></i> Stop Training
+                    </button>
+                </div>
+                
+                <!-- Status Message -->
+                <div id="status-message"></div>
+            </div>
+            
+            <!-- Main Area -->
+            <div class="col-md-9 main-area">
+                <div class="control-panel" id="environment-info">
+                    <h2 class="h5" id="env-title">Pick an environment</h2>
+                    <p class="text-muted" id="env-summary">Choose an environment to learn what the game is and what you are trying to achieve.</p>
+                    <p class="text-muted" id="env-observation"><strong>Observation:</strong> Select an environment to see what information the agent receives.</p>
+                </div>
+                
+                <div class="tab-wrapper">
+                    <ul class="nav nav-tabs" id="main-tabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="tab-game-tab" data-bs-toggle="tab" data-bs-target="#tab-game" type="button" role="tab" aria-controls="tab-game" aria-selected="true">Game</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-training-tab" data-bs-toggle="tab" data-bs-target="#tab-training" type="button" role="tab" aria-controls="tab-training" aria-selected="false">Training Insights</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-inference-tab" data-bs-toggle="tab" data-bs-target="#tab-inference" type="button" role="tab" aria-controls="tab-inference" aria-selected="false">Inference Insights</button>
+                        </li>
+                    </ul>
+                    <div class="tab-pane-shell tab-content" id="main-tabs-content">
+                        <div class="tab-pane fade show active" id="tab-game" role="tabpanel" aria-labelledby="tab-game-tab">
+                            <!-- Visualization Container -->
+                            <div class="visualization-container">
+                                <img id="env-frame" src="" alt="Environment will appear here" style="display: none;">
+                                <div id="placeholder" class="text-white text-center">
+                                    <h3>Ready to Start</h3>
+                                    <p>Select an environment and algorithm, then click "Start Training"</p>
+                                </div>
+                                
+                                <!-- Stats Overlay -->
+                                <div class="stats-overlay" id="stats-overlay" style="display: none;">
+                                    <div><strong>Episode:</strong> <span id="episode-num">0</span></div>
+                                    <div><strong>Step:</strong> <span id="step-num">0</span></div>
+                                    <div><strong>Reward:</strong> <span id="reward-value">0.00</span></div>
+                                    <div><strong>Status:</strong> <span id="status-value">Running</span></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Episode History -->
+                            <div class="control-panel mt-3">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h2 class="h5 mb-0">Training Progress</h2>
+                                    <span class="badge text-bg-light" id="training-progress-state">Waiting to start...</span>
+                                </div>
+                                <div id="episode-history" class="mt-3">
+                                    <p class="text-muted">Episode results will appear here...</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="tab-training" role="tabpanel" aria-labelledby="tab-training-tab">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h2 class="h5 mb-0">Training Analytics</h2>
+                                <span class="badge text-bg-secondary" id="training-state">Awaiting training...</span>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-lg-6">
+                                    <div class="analysis-card">
+                                        <h6 class="mb-2">Value Function Snapshots</h6>
+                                        <div id="value-function-plot" class="placeholder-panel">Value estimates will appear once training produces state-value updates.</div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6">
+                                    <div class="analysis-card">
+                                        <h6 class="mb-2">Policy Updates</h6>
+                                        <div class="placeholder-panel">
+                                            <div class="w-100">
+                                                <div class="fw-semibold mb-2">Recent updates</div>
+                                                <div id="policy-updates-log" class="text-start small">Watch how the policy shifts over time for the chosen algorithm.</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="analysis-card">
+                                        <h6 class="mb-2">Convergence Tracker</h6>
+                                        <div class="placeholder-panel">
+                                            <canvas id="convergenceChart" height="120"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="tab-inference" role="tabpanel" aria-labelledby="tab-inference-tab">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h2 class="h5 mb-0">Inference Explorer</h2>
+                                <span class="badge text-bg-secondary" id="inference-state">Run training to unlock inference insights.</span>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-lg-6">
+                                    <div class="analysis-card">
+                                        <h6 class="mb-2">Agent Behavior</h6>
+                                        <div class="placeholder-panel">
+                                            <div id="behavior-summary" class="text-start small">Replay trajectories and key decisions once an agent is trained.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6">
+                                    <div class="analysis-card">
+                                        <h6 class="mb-2">Decision Log</h6>
+                                        <div class="placeholder-panel">
+                                            <div class="w-100">
+                                                <div class="fw-semibold mb-2">Action traces</div>
+                                                <div id="decision-log" class="text-start small">Actions, Q-values, and observation highlights will stream here.</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="analysis-card">
+                                        <h6 class="mb-2">Action Preferences</h6>
+                                        <div class="placeholder-panel">
+                                            <canvas id="stepsChart" height="120"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <!-- Charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script>
+        // Initialize Socket.IO
+        const socket = io();
+        
+        let algorithms = {};
+        let currentAlgorithm = null;
+        let trainingActive = false;
+
+        // Metrics storage
+        const episodeRewards = [];
+        const episodeSteps = [];
+        const valueSnapshots = [];
+        const actionLog = [];
+        let convergenceChart = null;
+        let stepsChart = null;
+
+        function refreshTooltips() {
+            // Bootstrap requires re-attaching tooltips when new elements are injected
+            const triggers = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            triggers.forEach(el => new bootstrap.Tooltip(el));
+        }
+
+        function initConvergenceChart() {
+            const ctx = document.getElementById('convergenceChart');
+            if (!ctx) return;
+            if (convergenceChart) return;
+            convergenceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Total Reward per Episode',
+                        data: [],
+                        borderColor: '#0d6efd',
+                        backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                        tension: 0.25,
+                        pointRadius: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { title: { display: true, text: 'Episode' } },
+                        y: { title: { display: true, text: 'Total Reward' } }
+                    },
+                    plugins: { legend: { display: true } }
+                }
+            });
+        }
+
+        function updateConvergenceChart() {
+            if (!convergenceChart) initConvergenceChart();
+            if (!convergenceChart) return;
+            convergenceChart.data.labels = episodeRewards.map((_, i) => i + 1);
+            convergenceChart.data.datasets[0].data = episodeRewards;
+            convergenceChart.update();
+        }
+
+        function initStepsChart() {
+            const ctx = document.getElementById('stepsChart');
+            if (!ctx) return;
+            if (stepsChart) return;
+            stepsChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Steps per Episode',
+                        data: [],
+                        backgroundColor: 'rgba(25, 135, 84, 0.35)',
+                        borderColor: '#198754'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { title: { display: true, text: 'Episode' } },
+                        y: { title: { display: true, text: 'Steps' }, beginAtZero: true }
+                    },
+                    plugins: { legend: { display: true } }
+                }
+            });
+        }
+
+        function updateStepsChart() {
+            if (!stepsChart) initStepsChart();
+            if (!stepsChart) return;
+            stepsChart.data.labels = episodeSteps.map((_, i) => i + 1);
+            stepsChart.data.datasets[0].data = episodeSteps;
+            stepsChart.update();
+        }
+
+        function appendPolicyLog(message) {
+            const log = document.getElementById('policy-updates-log');
+            if (!log) return;
+            const entry = document.createElement('div');
+            entry.className = 'mb-1';
+            entry.textContent = message;
+            log.prepend(entry);
+        }
+
+        function renderBehaviorSummary() {
+            const el = document.getElementById('behavior-summary');
+            if (!el) return;
+            if (episodeRewards.length === 0) {
+                el.innerHTML = 'Replay trajectories and key decisions once an agent is trained.';
+                return;
+            }
+            const episodes = episodeRewards.length;
+            const bestReward = Math.max(...episodeRewards);
+            const avgReward = episodeRewards.reduce((a, b) => a + b, 0) / episodes;
+            const avgSteps = episodeSteps.length ? (episodeSteps.reduce((a, b) => a + b, 0) / episodeSteps.length) : 0;
+            el.innerHTML = `
+                <div><span class="fw-semibold">Episodes:</span> ${episodes}</div>
+                <div><span class="fw-semibold">Best reward:</span> ${bestReward.toFixed(2)}</div>
+                <div><span class="fw-semibold">Average reward:</span> ${avgReward.toFixed(2)}</div>
+                <div><span class="fw-semibold">Average steps:</span> ${avgSteps.toFixed(0)}</div>
+            `;
+        }
+
+        function updateValueFunctionDisplay() {
+            const el = document.getElementById('value-function-plot');
+            if (!el) return;
+            
+            console.log('updateValueFunctionDisplay called, snapshots:', valueSnapshots.length);
+            
+            if (valueSnapshots.length === 0) {
+                el.innerHTML = 'Value estimates will appear once training produces state-value updates.';
+                el.classList.remove('filled');
+                return;
+            }
+            
+            const recent = valueSnapshots.slice(-5);
+            const html = recent.map(v => 
+                `<div class="mb-1"><span class="text-secondary">Ep ${v.episode} Step ${v.step}:</span> V(s) = ${v.value.toFixed(4)}</div>`
+            ).join('');
+            el.innerHTML = html;
+            el.classList.add('filled');
+            console.log('Updated value display:', html);
+        }
+
+        function updateDecisionLogDisplay() {
+            const el = document.getElementById('decision-log');
+            if (!el) return;
+            
+            console.log('updateDecisionLogDisplay called, actionLog:', actionLog.length);
+            
+            if (actionLog.length === 0) {
+                el.innerHTML = 'Actions, Q-values, and observation highlights will stream here.';
+                return;
+            }
+            
+            const recent = actionLog.slice(-6);
+            const html = recent.map(a => 
+                `<div class="mb-1"><span class="text-secondary">S${a.step}:</span> A${a.action} | Q=${a.q_value.toFixed(4)} | R=${a.reward.toFixed(2)}</div>`
+            ).join('');
+            el.innerHTML = html;
+            console.log('Updated decision display:', html);
+        }
+
+        const environmentDetails = {
+            'CartPole-v1': {
+                name: 'CartPole (balancing a pole)',
+                goal: 'Move the cart left or right to keep the pole upright for as long as possible without letting it fall or leaving the track.',
+                observation: 'Cart position and velocity; pole angle and angular velocity.'
+            },
+            'MountainCar-v0': {
+                name: 'MountainCar (hill climbing)',
+                goal: 'Rock the underpowered car back and forth to build momentum and drive up the right hill to reach the flag.',
+                observation: 'Car position and velocity along the 1D track.'
+            },
+            'Blackjack-v1': {
+                name: 'Blackjack (card strategy)',
+                goal: 'Decide hit or stick to beat the dealer without busting; learn a policy that maximizes expected reward.',
+                observation: "Player hand sum, dealer's face-up card, and whether the player has a usable ace."
+            },
+            'FrozenLake-v1': {
+                name: 'FrozenLake (grid escape)',
+                goal: 'Navigate the slippery grid to reach the goal while avoiding holes; moves may slide, so plan carefully.',
+                observation: 'Current tile index on the slippery grid (discrete state).'
+            },
+            'CliffWalking-v0': {
+                name: 'CliffWalking (edge traversal)',
+                goal: 'Walk from start to goal along the cliff edge without stepping off the cliff, which gives a big penalty.',
+                observation: 'Current agent position on the grid (discrete state).'
+            },
+            'Taxi-v3': {
+                name: 'Taxi (pickup and drop-off)',
+                goal: 'Drive the taxi to pick up the passenger and deliver them to the destination as efficiently as possible.',
+                observation: 'Taxi row and column, passenger location, and destination index (encoded as a discrete state).'
+                },
+                'SimpleGridWorld-v0': {
+                    name: 'SimpleGridWorld (navigation)',
+                    goal: 'Navigate from the top-left corner (0,0) to the goal in the bottom-right corner. Find the shortest path to maximize reward.',
+                    observation: 'Agent position as (row, column) coordinates in the 5×5 grid.'
+                },
+                'TreasureHuntWorld-v0': {
+                    name: 'TreasureHuntWorld (treasure hunt)',
+                    goal: 'Collect all treasures scattered across the grid while avoiding obstacles. Plan an efficient route to maximize total reward.',
+                    observation: 'Agent position as (row, column) coordinates in the 8×8 grid with obstacles and treasures.'
+                },
+                'BreakoutLite-v0': {
+                name: 'BreakoutLite (brick breaking)',
+                goal: 'Control the paddle to bounce the ball and break all bricks. Maximize reward by clearing all bricks without missing the ball.',
+                observation: 'Paddle position, ball position and velocity, and remaining brick count (6-dimensional discrete state).'
+            },
+            'Gym4ReaLLite-v0': {
+                name: 'Gym4ReaLLite (dynamic navigation)',
+                goal: 'Navigate to the moving goal while avoiding static obstacles. Goal position shifts periodically, requiring adaptive pathfinding.',
+                observation: 'Agent position (row, column) and current goal position (row, column) in a 6×6 grid with obstacles.'
+            }
+        };
+
+        function resetMetrics() {
+            // Clear all stored metrics
+            episodeRewards.length = 0;
+            episodeSteps.length = 0;
+            valueSnapshots.length = 0;
+            actionLog.length = 0;
+            
+            // Reset chart instances
+            if (convergenceChart) {
+                convergenceChart.destroy();
+                convergenceChart = null;
+            }
+            if (stepsChart) {
+                stepsChart.destroy();
+                stepsChart = null;
+            }
+            
+            // Clear display panels
+            document.getElementById('value-function-plot').innerHTML = 'Value estimates will appear once training produces state-value updates.';
+            document.getElementById('policy-updates-log').innerHTML = 'Watch how the policy shifts over time for the chosen algorithm.';
+            document.getElementById('behavior-summary').innerHTML = 'Replay trajectories and key decisions once an agent is trained.';
+            document.getElementById('decision-log').innerHTML = 'Actions, Q-values, and observation highlights will stream here.';
+        }
+
+        function setBadge(id, text, variant = 'secondary') {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = text;
+            el.className = `badge text-bg-${variant}`;
+        }
+
+        function updateEnvironmentInfo(envName) {
+            const titleEl = document.getElementById('env-title');
+            const summaryEl = document.getElementById('env-summary');
+            const observationEl = document.getElementById('env-observation');
+            const details = environmentDetails[envName];
+
+            if (!envName || !details) {
+                titleEl.textContent = 'Pick an environment';
+                summaryEl.textContent = 'Choose an environment to learn what the game is and what you are trying to achieve.';
+                observationEl.innerHTML = '<strong>Observation:</strong> Select an environment to see what information the agent receives.';
+                return;
+            }
+
+            titleEl.textContent = details.name;
+            summaryEl.textContent = details.goal;
+            observationEl.innerHTML = `<strong>Observation:</strong> ${details.observation}`;
+        }
+        
+        // Load environments
+        fetch('/api/environments')
+            .then(response => response.json())
+            .then(environments => {
+                const select = document.getElementById('environment-select');
+                select.innerHTML = '<option value="">Select environment...</option>';
+                environments.forEach(env => {
+                    const option = document.createElement('option');
+                    option.value = env;
+                    option.textContent = env;
+                    select.appendChild(option);
+                });
+
+                updateEnvironmentInfo(select.value);
+            });
+
+        document.getElementById('environment-select').addEventListener('change', function() {
+            updateEnvironmentInfo(this.value);
+            resetMetrics();
+        });
+        
+        // Load algorithms
+        fetch('/api/algorithms')
+            .then(response => response.json())
+            .then(data => {
+                algorithms = data;
+                const select = document.getElementById('algorithm-select');
+                select.innerHTML = '<option value="">Select algorithm...</option>';
+                const orderedKeys = [
+                    'policy_iteration',
+                    'value_iteration',
+                    'monte_carlo',
+                    'temporal_difference',
+                    'nstep_td',
+                    'sarsa',
+                    'q_learning'
+                ];
+                orderedKeys.forEach(key => {
+                    if (!algorithms[key]) return;
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = algorithms[key].name;
+                    select.appendChild(option);
+                });
+            });
+        
+        // Algorithm selection change handler
+        document.getElementById('algorithm-select').addEventListener('change', function() {
+            const algoKey = this.value;
+            currentAlgorithm = algoKey;
+            resetMetrics();
+            
+            if (!algoKey) {
+                document.getElementById('parameters-container').innerHTML = 
+                    '<h5 class="mb-3">Parameters</h5><p class="text-muted">Select an algorithm to configure parameters</p>';
+                return;
+            }
+            
+            const algo = algorithms[algoKey];
+            let html = '<h5 class="mb-3">Parameters</h5>';
+            
+            Object.keys(algo.params).forEach(paramKey => {
+                const param = algo.params[paramKey];
+                const id = `param-${paramKey}`;
+                const prettyName = paramKey.replace(/_/g, ' ');
+                
+                html += `
+                    <div class="param-slider">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <label for="${id}" class="form-label mb-1">
+                                ${prettyName}
+                                <span class="slider-value" id="${id}-value">${param.default}</span>
+                            </label>
+                        </div>
+                        <input type="range" 
+                               class="form-range" 
+                               id="${id}"
+                               min="${param.min}" 
+                               max="${param.max}" 
+                               step="${param.step}" 
+                               value="${param.default}"
+                               data-param="${paramKey}">
+                        <div class="param-description">${param.description}</div>
+                    </div>
+                `;
+            });
+            
+            document.getElementById('parameters-container').innerHTML = html;
+            refreshTooltips();
+            
+            // Add event listeners to sliders
+            Object.keys(algo.params).forEach(paramKey => {
+                const slider = document.getElementById(`param-${paramKey}`);
+                const valueSpan = document.getElementById(`param-${paramKey}-value`);
+                
+                slider.addEventListener('input', function() {
+                    valueSpan.textContent = this.value;
+                });
+
+                // Live update parameters during training
+                slider.addEventListener('change', function() {
+                    if (!trainingActive) return;
+                    const param = algo.params[paramKey];
+                    const paramType = param.type;
+                    const val = paramType === 'int' ? parseInt(this.value) : parseFloat(this.value);
+                    const update = {};
+                    update[paramKey] = val;
+                    socket.emit('update_params', { params: update });
+                });
+            });
+        });
+        
+        // Start training button
+        document.getElementById('start-btn').addEventListener('click', function() {
+            const environment = document.getElementById('environment-select').value;
+            const algorithm = document.getElementById('algorithm-select').value;
+            const numEpisodes = parseInt(document.getElementById('num-episodes').value);
+            const delay = parseFloat(document.getElementById('delay-input').value);
+            
+            if (!environment || !algorithm) {
+                showStatus('Please select both environment and algorithm', 'danger');
+                return;
+            }
+            
+            // Reset metrics for fresh training session
+            resetMetrics();
+            
+            // Gather parameters
+            const params = {};
+            if (currentAlgorithm) {
+                const algo = algorithms[currentAlgorithm];
+                Object.keys(algo.params).forEach(paramKey => {
+                    const slider = document.getElementById(`param-${paramKey}`);
+                    if (slider) {
+                        const paramType = algo.params[paramKey].type;
+                        params[paramKey] = paramType === 'int' ? 
+                            parseInt(slider.value) : parseFloat(slider.value);
+                    }
+                });
+            }
+            
+            // Send training request
+            socket.emit('start_training', {
+                environment: environment,
+                algorithm: algorithm,
+                params: params,
+                num_episodes: numEpisodes,
+                delay: delay
+            });
+            
+            // Update UI
+            document.getElementById('start-btn').disabled = true;
+            document.getElementById('stop-btn').disabled = false;
+            document.getElementById('episode-history').innerHTML = '';
+            showStatus('Starting training...', 'info');
+        });
+        
+        // Stop training button
+        document.getElementById('stop-btn').addEventListener('click', function() {
+            socket.emit('stop_training');
+            document.getElementById('start-btn').disabled = false;
+            document.getElementById('stop-btn').disabled = true;
+            trainingActive = false;
+        });
+        
+        // Socket.IO event handlers
+        socket.on('training_started', function(data) {
+            showStatus('Training in progress...', 'success');
+            document.getElementById('placeholder').style.display = 'none';
+            document.getElementById('stats-overlay').style.display = 'block';
+            trainingActive = true;
+            setBadge('training-state', 'Collecting live metrics...', 'info');
+            setBadge('training-progress-state', 'Training...', 'info');
+            setBadge('inference-state', 'Inference insights unlock after training completes.', 'secondary');
+        });
+        
+        socket.on('training_update', function(data) {
+            // Debug: log incoming data
+            console.log('training_update received:', {value: data.value, action: data.action, q_value: data.q_value});
+            
+            // Update frame
+            if (data.frame) {
+                const img = document.getElementById('env-frame');
+                img.src = data.frame;
+                img.style.display = 'block';
+            }
+            
+            // Update stats
+            document.getElementById('episode-num').textContent = data.episode;
+            document.getElementById('step-num').textContent = data.step;
+            document.getElementById('reward-value').textContent = data.reward.toFixed(2);
+            document.getElementById('status-value').textContent = data.done ? 'Episode Complete' : 'Running';
+            setBadge('training-state', `Episode ${data.episode} · Step ${data.step}`, 'info');
+            setBadge('training-progress-state', `Episode ${data.episode}`, 'info');
+
+            // Always capture data, even if undefined (use defaults)
+            const value = data.value !== undefined ? data.value : 0;
+            const action = data.action !== undefined ? data.action : -1;
+            const q_value = data.q_value !== undefined ? data.q_value : 0;
+            
+            valueSnapshots.push({step: data.step, episode: data.episode, value: value});
+            actionLog.push({
+                step: data.step,
+                episode: data.episode,
+                action: action,
+                q_value: q_value,
+                reward: data.reward
+            });
+            
+            updateValueFunctionDisplay();
+            updateDecisionLogDisplay();
+        });
+        
+        socket.on('episode_complete', function(data) {
+            // Add to history
+            const historyDiv = document.getElementById('episode-history');
+            const episodeDiv = document.createElement('div');
+            episodeDiv.className = 'alert alert-info mb-2';
+            episodeDiv.innerHTML = `
+                <strong>Episode ${data.episode}</strong> - 
+                Total Reward: ${data.total_reward.toFixed(2)}, 
+                Steps: ${data.steps}
+            `;
+            historyDiv.insertBefore(episodeDiv, historyDiv.firstChild);
+            
+            // Keep only last 10 episodes
+            while (historyDiv.children.length > 10) {
+                historyDiv.removeChild(historyDiv.lastChild);
+            }
+
+            // Track metrics and update charts/logs
+            episodeRewards.push(data.total_reward);
+            episodeSteps.push(data.steps);
+            updateConvergenceChart();
+            updateStepsChart();
+            appendPolicyLog(`Episode ${data.episode}: policy updated · reward ${data.total_reward.toFixed(2)} · steps ${data.steps}`);
+            renderBehaviorSummary();
+        });
+        
+        socket.on('training_complete', function(data) {
+            showStatus('Training completed!', 'success');
+            document.getElementById('start-btn').disabled = false;
+            document.getElementById('stop-btn').disabled = true;
+            document.getElementById('status-value').textContent = 'Complete';
+            trainingActive = false;
+            setBadge('training-state', 'Training complete. Inspect convergence.', 'success');
+            setBadge('training-progress-state', 'Complete', 'success');
+            setBadge('inference-state', 'Ready to inspect agent behavior.', 'success');
+
+            // Final render for insights tabs
+            updateConvergenceChart();
+            updateStepsChart();
+            renderBehaviorSummary();
+            updateValueFunctionDisplay();
+            updateDecisionLogDisplay();
+        });
+        
+        socket.on('training_stopped', function(data) {
+            showStatus('Training stopped', 'warning');
+            document.getElementById('start-btn').disabled = false;
+            document.getElementById('stop-btn').disabled = true;
+            trainingActive = false;
+            setBadge('training-state', 'Training stopped early.', 'warning');
+            setBadge('training-progress-state', 'Stopped', 'warning');
+        });
+        
+        socket.on('training_error', function(data) {
+            showStatus('Error: ' + data.error, 'danger');
+            document.getElementById('start-btn').disabled = false;
+            document.getElementById('stop-btn').disabled = true;
+            setBadge('training-state', 'Error encountered.', 'danger');
+            setBadge('training-progress-state', 'Error', 'danger');
+        });
+        
+        // Helper function to show status messages
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status-message');
+            statusDiv.innerHTML = `
+                <div class="alert alert-${type} alert-dismissible fade show mt-3" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+        }
+
+        // Enable tooltips for static elements on load
+        refreshTooltips();
+    </script>
+</body>
+</html>
