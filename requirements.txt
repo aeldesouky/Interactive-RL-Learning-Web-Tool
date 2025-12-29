@@ -5,4 +5,3 @@ Pillow>=10.0.0
 python-socketio>=5.10.0
 gymnasium>=0.29.1
 gymnasium[classic-control] 
-# Box2D extras removed (Windows build issues; not needed)
